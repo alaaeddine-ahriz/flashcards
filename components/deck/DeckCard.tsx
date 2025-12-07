@@ -1,4 +1,3 @@
-import { Button } from "@/components/ui/Button";
 import { IconButton } from "@/components/ui/IconButton";
 import { ProgressBar } from "@/components/ui/ProgressBar";
 
@@ -6,7 +5,7 @@ interface DeckCardProps {
     title: string;
     cardCount: number;
     mastery: number;
-    onPractice?: () => void;
+    onClick?: () => void;
     onMenuClick?: () => void;
 }
 
@@ -14,19 +13,29 @@ export function DeckCard({
     title,
     cardCount,
     mastery,
-    onPractice,
+    onClick,
     onMenuClick,
 }: DeckCardProps) {
     return (
         <div className="w-full">
-            <div className="flex flex-col rounded-xl bg-card shadow-sm">
+            <div
+                className="flex cursor-pointer flex-col rounded-xl bg-card shadow-sm transition-transform active:scale-[0.98]"
+                onClick={onClick}
+            >
                 <div className="flex min-w-72 grow flex-col gap-3 p-4">
                     {/* Header */}
                     <div className="flex items-start justify-between">
                         <p className="text-lg font-bold leading-tight tracking-tight text-foreground">
                             {title}
                         </p>
-                        <IconButton icon="more_vert" size="sm" onClick={onMenuClick} />
+                        <IconButton
+                            icon="more_vert"
+                            size="sm"
+                            onClick={(e) => {
+                                e.stopPropagation();
+                                onMenuClick?.();
+                            }}
+                        />
                     </div>
 
                     {/* Card count */}
@@ -41,13 +50,9 @@ export function DeckCard({
                         showPercentage
                         variant="primary"
                     />
-
-                    {/* Actions */}
-                    <div className="mt-2 flex items-center justify-end gap-3">
-                        <Button onClick={onPractice}>Practice</Button>
-                    </div>
                 </div>
             </div>
         </div>
     );
 }
+

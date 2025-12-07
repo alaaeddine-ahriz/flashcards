@@ -1,36 +1,118 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Flashcards CSV
+
+A modern spaced repetition flashcard app with **Anki-style SM-2 algorithm** for optimal memorization. Import flashcards from CSV files and practice with scientifically-proven learning intervals.
+
+## Features
+
+- 📚 **CSV Import** - Upload flashcards from CSV files (front, back columns)
+- 🧠 **SM-2 Algorithm** - Anki-style spaced repetition for efficient learning
+- 📊 **Progress Tracking** - Track mastery with New/Learning/Mastered states
+- 🏷️ **Deck Organization** - Organize cards into decks with tags
+- 🔥 **Streak System** - Build daily practice streaks
+- 🔐 **User Accounts** - Supabase authentication with per-user data
+- ⚡ **Offline-First** - Local caching for instant, lag-free practice
+
+## Tech Stack
+
+| Layer | Technology |
+|-------|------------|
+| **Framework** | Next.js 15 (App Router) |
+| **Styling** | Tailwind CSS |
+| **Database** | Supabase (PostgreSQL) |
+| **Auth** | Supabase Auth (email/password) |
+| **Caching** | localStorage (offline-first) |
+| **Language** | TypeScript |
+
+## How the SM-2 Algorithm Works
+
+The app uses **SuperMemo 2 (SM-2)**, the same algorithm that powers Anki:
+
+### Card States
+
+| State | Criteria | Description |
+|-------|----------|-------------|
+| 🟡 **New** | `repetitions = 0` | Never reviewed |
+| 🔵 **Learning** | `interval < 7 days` | Being learned |
+| 🟢 **Mastered** | `interval ≥ 7 days` | Long-term memory |
+
+### Difficulty Ratings
+
+After viewing a card, rate your recall:
+
+| Rating | Effect |
+|--------|--------|
+| **Hard** | Reset interval, lower ease factor |
+| **Good** | Standard interval increase |
+| **Easy** | Maximum interval boost |
+
+### Interval Calculation
+
+```
+EF' = EF + (0.1 - (5 - q) × (0.08 + (5 - q) × 0.02))
+
+Interval:
+  • 1st review: 1 day
+  • 2nd review: 6 days  
+  • Subsequent: interval × EF
+```
+
+Where `EF` = Ease Factor (default 2.5, min 1.3) and `q` = quality rating (0-5).
 
 ## Getting Started
 
-First, run the development server:
+### 1. Install Dependencies
+
+```bash
+npm install
+```
+
+### 2. Set Up Supabase
+
+Create a Supabase project and add environment variables:
+
+```bash
+# .env.local
+NEXT_PUBLIC_SUPABASE_URL=your-project-url
+NEXT_PUBLIC_SUPABASE_ANON_KEY=your-anon-key
+```
+
+### 3. Run Database Schema
+
+Execute the SQL in `supabase/schema.sql` in your Supabase SQL Editor.
+
+### 4. Start Development Server
 
 ```bash
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Open [http://localhost:3000](http://localhost:3000) to start learning!
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+## Project Structure
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+```
+├── app/                  # Next.js App Router pages
+│   ├── auth/             # Sign in/up page
+│   ├── decks/            # Deck list, upload, edit
+│   ├── practice/[id]/    # Practice session
+│   └── profile/          # User stats & progress
+├── components/           # Reusable UI components
+├── services/             # Business logic (cache-first)
+├── lib/                  # Supabase client, cache, sync
+├── contexts/             # React contexts (Auth)
+└── types/                # TypeScript type definitions
+```
 
-## Learn More
+## CSV Format
 
-To learn more about Next.js, take a look at the following resources:
+Upload CSV files with two columns:
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+```csv
+front,back
+What is 2+2?,4
+Capital of France?,Paris
+```
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+## License
 
-## Deploy on Vercel
-
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+MIT

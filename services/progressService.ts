@@ -21,14 +21,28 @@ export function getProgress(): UserProgress {
 }
 
 /**
- * Calculate overall mastery percentage from cached flashcards
+ * Get overall stats with Anki-style card counts
  */
-export function getOverallMastery(): number {
+export function getOverallStats(): {
+    newCount: number;
+    learningCount: number;
+    masteredCount: number;
+    totalCount: number;
+    masteryPercent: number;
+} {
     const flashcards = getCachedFlashcards();
-    if (flashcards.length === 0) return 0;
+    const totalCount = flashcards.length;
 
-    const mastered = flashcards.filter((c) => c.interval >= MASTERY_THRESHOLD_DAYS).length;
-    return Math.round((mastered / flashcards.length) * 100);
+    if (totalCount === 0) {
+        return { newCount: 0, learningCount: 0, masteredCount: 0, totalCount: 0, masteryPercent: 0 };
+    }
+
+    const newCount = flashcards.filter((c) => c.repetitions === 0).length;
+    const masteredCount = flashcards.filter((c) => c.interval >= MASTERY_THRESHOLD_DAYS).length;
+    const learningCount = totalCount - newCount - masteredCount;
+    const masteryPercent = Math.round((masteredCount / totalCount) * 100);
+
+    return { newCount, learningCount, masteredCount, totalCount, masteryPercent };
 }
 
 /**
@@ -48,10 +62,14 @@ export function getDeckProgress(): DeckProgress[] {
 
     return decks.map((deck) => {
         const deckCards = flashcards.filter((c) => c.deckId === deck.id);
-        const cardCount = deckCards.length;
+        const totalCount = deckCards.length;
 
-        const mastered = deckCards.filter((c) => c.interval >= MASTERY_THRESHOLD_DAYS).length;
-        const progress = cardCount > 0 ? Math.round((mastered / cardCount) * 100) : 0;
+        // Anki-style card states
+        const newCount = deckCards.filter((c) => c.repetitions === 0).length;
+        const masteredCount = deckCards.filter((c) => c.interval >= MASTERY_THRESHOLD_DAYS).length;
+        const learningCount = totalCount - newCount - masteredCount;
+
+        const progress = totalCount > 0 ? Math.round((masteredCount / totalCount) * 100) : 0;
 
         // Choose icon based on progress
         let icon = "pending";
@@ -63,6 +81,10 @@ export function getDeckProgress(): DeckProgress[] {
             name: deck.name,
             icon,
             progress,
+            newCount,
+            learningCount,
+            masteredCount,
+            totalCount,
         };
     });
 }

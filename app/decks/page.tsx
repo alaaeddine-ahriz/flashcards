@@ -23,10 +23,25 @@ import {
     deleteDeck,
     createTag,
 } from "@/services/deckService";
+import { getOverallStats } from "@/services/progressService";
 import { DeckWithStats } from "@/types";
+import { useAuth } from "@/contexts/AuthContext";
+
+// Helper to extract name and initials from email
+function getUserDisplayInfo(email: string | undefined) {
+    if (!email) return { name: "Student", initials: "ME" };
+    const namePart = email.split("@")[0];
+    // Capitalize first letter
+    const name = namePart.charAt(0).toUpperCase() + namePart.slice(1);
+    // Get initials (first two characters, uppercase)
+    const initials = namePart.slice(0, 2).toUpperCase();
+    return { name, initials };
+}
 
 export default function DecksPage() {
     const router = useRouter();
+    const { user } = useAuth();
+    const { initials } = getUserDisplayInfo(user?.email ?? undefined);
     const [decks, setDecks] = useState<DeckWithStats[]>([]);
     const [tags, setTags] = useState<string[]>([]);
     const [selectedTag, setSelectedTag] = useState<string>("All");
@@ -38,6 +53,9 @@ export default function DecksPage() {
     const [showLabelSheet, setShowLabelSheet] = useState(false);
     const [showNewLabelSheet, setShowNewLabelSheet] = useState(false);
     const [newLabelName, setNewLabelName] = useState("");
+
+    // Overall stats
+    const [overallStats, setOverallStats] = useState({ newCount: 0, learningCount: 0, masteredCount: 0, totalCount: 0 });
 
     const loadData = useCallback(() => {
         // Read from cache - synchronous, fast!
@@ -67,6 +85,7 @@ export default function DecksPage() {
 
         setDecks(decksWithStats);
         setTags(["All", ...Array.from(tagsSet).sort()]);
+        setOverallStats(getOverallStats());
     }, []);
 
     useEffect(() => {
@@ -150,7 +169,7 @@ export default function DecksPage() {
                     </h2>
                     <Link href="/profile">
                         <div className="flex size-10 items-center justify-center rounded-full bg-primary text-sm font-medium text-white">
-                            ME
+                            {initials}
                         </div>
                     </Link>
                 </div>
@@ -205,7 +224,7 @@ export default function DecksPage() {
                             title={deck.name}
                             cardCount={deck.cardCount}
                             mastery={deck.mastery}
-                            onPractice={() => router.push(`/practice/${deck.id}`)}
+                            onClick={() => router.push(`/practice/${deck.id}`)}
                             onMenuClick={() => handleDeckMenu(deck)}
                         />
                     ))

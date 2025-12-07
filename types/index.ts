@@ -46,6 +46,11 @@ export interface DeckProgress {
     name: string;
     icon: string;
     progress: number;
+    // Anki-style card states
+    newCount: number;      // Cards never reviewed (repetitions = 0)
+    learningCount: number; // Cards being learned (repetitions > 0, interval < 7)
+    masteredCount: number; // Cards mastered (interval >= 7)
+    totalCount: number;
 }
 
 // ============================================
