@@ -249,3 +249,22 @@ body {
 .input::placeholder {
   color: var(--muted-foreground);
 }
+
+/* Hide scrollbar for Chrome, Safari, Edge */
+::-webkit-scrollbar {
+  width: 0;
+  height: 0;
+}
+
+/* Hide scrollbar for Firefox */
+* {
+  scrollbar-width: none;
+  /* Firefox */
+  -ms-overflow-style: none;
+  /* IE / Edge */
+}
+
+*::-webkit-scrollbar {
+  display: none;
+  /* Safari / Chrome */
+}
