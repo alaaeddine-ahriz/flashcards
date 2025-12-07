@@ -7,6 +7,7 @@ import {
     setCachedTags,
     getCachedDecks,
     setCachedDecks,
+    setCachedFlashcards,
 } from "@/lib/cache";
 import {
     Deck,
@@ -485,4 +486,106 @@ export async function getDeckTags(deckId: string): Promise<string[]> {
     }
 
     return (data ?? []).map((t: { tag: string }) => t.tag);
+}
+
+/**
+ * Sync all data from Supabase to local cache
+ * Returns fresh decks with stats for immediate UI update
+ */
+export async function syncData(): Promise<DeckWithStats[]> {
+    const supabase = createClient();
+    const { data: { user } } = await supabase.auth.getUser();
+
+    if (!user) return [];
+
+    // 1. Fetch all data in parallel
+    const [decksResult, flashcardsResult, tagsResult, profileResult] = await Promise.all([
+        supabase
+            .from("decks")
+            .select("*")
+            .eq("user_id", user.id)
+            .order("created_at", { ascending: false }),
+        supabase
+            .from("flashcards")
+            .select("*")
+            .eq("user_id", user.id),
+        supabase
+            .from("deck_tags")
+            .select("deck_id, tag")
+            .eq("user_id", user.id),
+        supabase
+            .from("profiles")
+            .select("tags")
+            .eq("id", user.id)
+            .single(),
+    ]);
+
+    if (decksResult.error) {
+        console.error("Error syncing data:", decksResult.error);
+        return [];
+    }
+
+    // 2. Process Decks
+    const deckRows = (decksResult.data ?? []) as DeckRow[];
+    const deckTags = (tagsResult.data ?? []) as DeckTagRow[];
+
+    // Build map of deck_id -> tags[]
+    const deckTagsMap = new Map<string, string[]>();
+    for (const dt of deckTags) {
+        const existing = deckTagsMap.get(dt.deck_id) || [];
+        existing.push(dt.tag);
+        deckTagsMap.set(dt.deck_id, existing);
+    }
+
+    const decks: Deck[] = deckRows.map((d) => ({
+        id: d.id,
+        name: d.name,
+        tags: deckTagsMap.get(d.id) || [],
+        createdAt: d.created_at,
+        updatedAt: d.updated_at,
+    }));
+
+    // 3. Process Flashcards
+    // Need to map DB snake_case to app camelCase
+    const flashcardRows = flashcardsResult.data ?? [];
+    const flashcards = flashcardRows.map((f: any) => ({
+        id: f.id,
+        deckId: f.deck_id,
+        front: f.front,
+        back: f.back,
+        easeFactor: f.ease_factor,
+        interval: f.interval,
+        repetitions: f.repetitions,
+        nextReviewDate: f.next_review_date,
+        createdAt: f.created_at,
+        updatedAt: f.updated_at,
+    }));
+
+    // 4. Process User Tags
+    const userTags = (profileResult.data?.tags || []) as string[];
+
+    // 5. Update Cache
+    setCachedDecks(decks);
+    setCachedFlashcards(flashcards);
+    setCachedTags(userTags);
+
+    // We don't overwrite progress as that might have local offline updates
+    // But we could sync it if we had a server-side progress table
+
+    // 6. Return computed stats for UI
+    const now = new Date().toISOString();
+    return decks.map((deck) => {
+        const deckCards = flashcards.filter((c: any) => c.deckId === deck.id);
+        const cardCount = deckCards.length;
+        const masteredCards = deckCards.filter((c: any) => c.interval >= 7).length;
+        const mastery = cardCount > 0 ? Math.round((masteredCards / cardCount) * 100) : 0;
+        const dueCardCount = deckCards.filter((c: any) => c.nextReviewDate <= now).length;
+
+        return {
+            ...deck,
+            cardCount,
+            mastery,
+            dueCardCount,
+        };
+    });
 }

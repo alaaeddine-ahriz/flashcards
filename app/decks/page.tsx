@@ -25,6 +25,7 @@ import {
     getUserTags,
     assignTagToDeck,
     removeTagFromDeck,
+    syncData,
 } from "@/services/deckService";
 import { getOverallStats } from "@/services/progressService";
 import { DeckWithStats } from "@/types";
@@ -91,6 +92,21 @@ export default function DecksPage() {
         setDecks(decksWithStats);
         setTags(["All", ...Array.from(tagsSet).sort()]);
         setOverallStats(getOverallStats());
+
+        // Fetch fresh data from Supabase in background
+        syncData().then((freshDecks) => {
+            if (freshDecks.length > 0) {
+                setDecks(freshDecks);
+                // Also refresh tags from the fresh decks
+                const freshTagsSet = new Set<string>();
+                freshDecks.forEach((d) => d.tags.forEach((t) => freshTagsSet.add(t)));
+                // We also need to get user tags again to be sure
+                getUserTags().then((userTags) => {
+                    userTags.forEach((t) => freshTagsSet.add(t));
+                    setTags(["All", ...Array.from(freshTagsSet).sort()]);
+                });
+            }
+        });
     }, []);
 
     // Background refresh of user tags from Supabase (non-blocking)
