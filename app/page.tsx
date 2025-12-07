@@ -20,7 +20,7 @@ const features = [
 
 export default function LandingPage() {
   return (
-    <div className="relative flex h-auto min-h-screen w-full flex-col">
+    <div className="relative flex h-auto min-h-screen w-full flex-col pb-24">
       {/* Top App Bar */}
       <header className="flex items-center p-4">
         <div className="flex size-10 shrink-0 items-center justify-center text-white bg-primary rounded-lg">
@@ -49,21 +49,18 @@ export default function LandingPage() {
         </p>
       </section>
 
-      {/* Features Grid */}
-      <section className="grid grid-cols-1 gap-4 p-4">
+      {/* Features List */}
+      <section className="flex flex-col gap-6 px-4 py-2">
         {features.map((feature) => (
-          <div
-            key={feature.title}
-            className="flex flex-1 gap-4 rounded-xl border border-muted bg-card p-4 flex-col transition-all hover:border-primary/50 hover:shadow-md"
-          >
-            <div className="text-primary">
+          <div key={feature.title} className="flex gap-4">
+            <div className="flex size-10 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary">
               <span className="material-symbols-outlined">{feature.icon}</span>
             </div>
-            <div className="flex flex-col gap-1">
-              <h2 className="text-foreground text-base font-bold leading-tight">
+            <div className="flex flex-col">
+              <h3 className="text-base font-bold leading-tight text-foreground">
                 {feature.title}
-              </h2>
-              <p className="text-muted-foreground text-sm font-normal leading-normal">
+              </h3>
+              <p className="text-sm text-muted-foreground">
                 {feature.description}
               </p>
             </div>
@@ -71,11 +68,8 @@ export default function LandingPage() {
         ))}
       </section>
 
-      {/* Spacer to push CTA to bottom */}
-      <div className="flex-grow" />
-
       {/* CTA Section */}
-      <section className="flex flex-col items-center gap-4 px-4 py-6">
+      <section className="fixed bottom-0 left-0 right-0 z-50 flex flex-col items-center gap-4 border-t border-muted bg-background px-4 py-6">
         <Link
           href="/auth"
           className="btn btn-primary min-w-[84px] max-w-[480px] h-12 px-5 w-full text-base font-bold leading-normal tracking-[0.015em]"

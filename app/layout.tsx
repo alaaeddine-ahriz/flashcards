@@ -11,6 +11,11 @@ const lexend = Lexend({
 export const metadata: Metadata = {
   title: "Flashcards - Study Smarter",
   description: "Import CSV flashcards, organize with tags, and track your learning progress.",
+  appleWebApp: {
+    capable: true,
+    statusBarStyle: "default",
+    title: "Flashcards",
+  },
 };
 
 export default function RootLayout({
