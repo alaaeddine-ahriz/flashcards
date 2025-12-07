@@ -21,10 +21,13 @@ import {
 } from "@/services/flashcardService";
 import { Deck, Flashcard } from "@/types";
 
+import { useAuth } from "@/contexts/AuthContext";
+
 export default function EditDeckPage() {
     const router = useRouter();
     const params = useParams();
     const deckId = params.id as string;
+    const { user, loading: authLoading } = useAuth();
 
     const [deck, setDeck] = useState<Deck | null>(null);
     const [flashcards, setFlashcards] = useState<Flashcard[]>([]);
@@ -48,15 +51,48 @@ export default function EditDeckPage() {
     const [deleteTarget, setDeleteTarget] = useState<"card" | "deck" | null>(null);
 
     const loadDeck = useCallback(async () => {
-        const deckData = await getDeck(deckId);
-        if (deckData) {
-            setDeck(deckData);
-            setDeckName(deckData.name);
-            const cards = await getFlashcards(deckId);
-            setFlashcards(cards);
+        // Wait for auth to load
+        if (authLoading) return;
+
+        console.log("loadDeck started, deckId:", deckId);
+        if (!deckId) {
+            console.error("No deckId found");
+            setIsLoading(false);
+            return;
         }
-        setIsLoading(false);
-    }, [deckId]);
+
+        const fetchData = async () => {
+            console.log("Fetching deck...");
+            // Pass user.id to avoid redundant getUser() call
+            const deckData = await getDeck(deckId, user?.id);
+            console.log("Deck data received:", deckData);
+
+            if (deckData) {
+                setDeck(deckData);
+                setDeckName(deckData.name);
+                console.log("Fetching flashcards...");
+                const cards = await getFlashcards(deckId, user?.id);
+                console.log("Flashcards received:", cards.length);
+                setFlashcards(cards);
+            } else {
+                console.log("Deck not found for id:", deckId);
+            }
+        };
+
+        const timeoutPromise = new Promise((_, reject) =>
+            setTimeout(() => reject(new Error("Request timed out")), 10000)
+        );
+
+        try {
+            await Promise.race([fetchData(), timeoutPromise]);
+        } catch (error) {
+            console.error("Error in loadDeck:", error);
+            // Optional: Show error toast or state
+        } finally {
+            console.log("Setting isLoading to false");
+            setIsLoading(false);
+        }
+    }, [deckId, user, authLoading]);
 
     useEffect(() => {
         loadDeck();

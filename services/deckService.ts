@@ -155,24 +155,28 @@ export async function getDecksWithStats(): Promise<DeckWithStats[]> {
 /**
  * Get a single deck by ID
  */
-export async function getDeck(id: string): Promise<Deck | null> {
+export async function getDeck(id: string, userId?: string): Promise<Deck | null> {
     const supabase = createClient();
-    const { data: { user } } = await supabase.auth.getUser();
 
-    if (!user) return null;
+    let currentUserId = userId;
+    if (!currentUserId) {
+        const { data: { user } } = await supabase.auth.getUser();
+        if (!user) return null;
+        currentUserId = user.id;
+    }
 
     const [deckResult, tagsResult] = await Promise.all([
         supabase
             .from("decks")
             .select("*")
             .eq("id", id)
-            .eq("user_id", user.id)
+            .eq("user_id", currentUserId)
             .single(),
         supabase
             .from("deck_tags")
             .select("tag")
             .eq("deck_id", id)
-            .eq("user_id", user.id),
+            .eq("user_id", currentUserId),
     ]);
 
     if (deckResult.error || !deckResult.data) return null;

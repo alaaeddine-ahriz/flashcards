@@ -31,17 +31,21 @@ export async function getAllFlashcards(): Promise<Flashcard[]> {
 /**
  * Get flashcards for a specific deck
  */
-export async function getFlashcards(deckId: string): Promise<Flashcard[]> {
+export async function getFlashcards(deckId: string, userId?: string): Promise<Flashcard[]> {
     const supabase = createClient();
-    const { data: { user } } = await supabase.auth.getUser();
 
-    if (!user) return [];
+    let currentUserId = userId;
+    if (!currentUserId) {
+        const { data: { user } } = await supabase.auth.getUser();
+        if (!user) return [];
+        currentUserId = user.id;
+    }
 
     const { data, error } = await supabase
         .from("flashcards")
         .select("*")
         .eq("deck_id", deckId)
-        .eq("user_id", user.id);
+        .eq("user_id", currentUserId);
 
     if (error) {
         console.error("Error fetching flashcards:", error);
