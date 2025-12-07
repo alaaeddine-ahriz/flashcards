@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback } from "react";
 import Link from "next/link";
 import { useRouter, useParams } from "next/navigation";
 import { TopAppBar } from "@/components/layout/TopAppBar";
@@ -47,23 +47,24 @@ export default function EditDeckPage() {
     const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
     const [deleteTarget, setDeleteTarget] = useState<"card" | "deck" | null>(null);
 
-    useEffect(() => {
-        loadDeck();
-    }, [deckId]);
-
-    function loadDeck() {
-        const deckData = getDeck(deckId);
+    const loadDeck = useCallback(async () => {
+        const deckData = await getDeck(deckId);
         if (deckData) {
             setDeck(deckData);
             setDeckName(deckData.name);
-            setFlashcards(getFlashcards(deckId));
+            const cards = await getFlashcards(deckId);
+            setFlashcards(cards);
         }
         setIsLoading(false);
-    }
+    }, [deckId]);
 
-    function handleSave() {
+    useEffect(() => {
+        loadDeck();
+    }, [loadDeck]);
+
+    async function handleSave() {
         if (!deck || !deckName.trim()) return;
-        updateDeck(deck.id, { name: deckName.trim() });
+        await updateDeck(deck.id, { name: deckName.trim() });
         router.push("/decks");
     }
 
@@ -72,9 +73,9 @@ export default function EditDeckPage() {
         setShowAddCard(true);
     }
 
-    function handleAddCard() {
+    async function handleAddCard() {
         if (!newCardFront.trim() || !newCardBack.trim()) return;
-        createFlashcard({
+        await createFlashcard({
             deckId,
             front: newCardFront.trim(),
             back: newCardBack.trim(),
@@ -82,7 +83,8 @@ export default function EditDeckPage() {
         setNewCardFront("");
         setNewCardBack("");
         setShowAddCard(false);
-        setFlashcards(getFlashcards(deckId));
+        const cards = await getFlashcards(deckId);
+        setFlashcards(cards);
     }
 
     // Card action handlers
@@ -99,15 +101,16 @@ export default function EditDeckPage() {
         setShowEditCard(true);
     }
 
-    function handleSaveEditCard() {
+    async function handleSaveEditCard() {
         if (!selectedCard || !editCardFront.trim() || !editCardBack.trim()) return;
-        updateFlashcard(selectedCard.id, {
+        await updateFlashcard(selectedCard.id, {
             front: editCardFront.trim(),
             back: editCardBack.trim(),
         });
         setShowEditCard(false);
         setSelectedCard(null);
-        setFlashcards(getFlashcards(deckId));
+        const cards = await getFlashcards(deckId);
+        setFlashcards(cards);
     }
 
     function handleRequestDeleteCard() {
@@ -116,13 +119,14 @@ export default function EditDeckPage() {
         setShowDeleteConfirm(true);
     }
 
-    function handleConfirmDeleteCard() {
+    async function handleConfirmDeleteCard() {
         if (!selectedCard) return;
-        deleteFlashcard(selectedCard.id);
+        await deleteFlashcard(selectedCard.id);
         setShowDeleteConfirm(false);
         setDeleteTarget(null);
         setSelectedCard(null);
-        setFlashcards(getFlashcards(deckId));
+        const cards = await getFlashcards(deckId);
+        setFlashcards(cards);
     }
 
     // Deck delete handlers
@@ -131,9 +135,9 @@ export default function EditDeckPage() {
         setShowDeleteConfirm(true);
     }
 
-    function handleConfirmDeleteDeck() {
+    async function handleConfirmDeleteDeck() {
         if (!deck) return;
-        deleteDeck(deck.id);
+        await deleteDeck(deck.id);
         router.push("/decks");
     }
 

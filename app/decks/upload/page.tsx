@@ -75,10 +75,16 @@ export default function UploadDeckPage() {
 
         try {
             // Create deck
-            const deck = createDeck({ name: deckName.trim() });
+            const deck = await createDeck({ name: deckName.trim() });
+
+            if (!deck) {
+                setError("Failed to create deck. Please try again.");
+                setIsUploading(false);
+                return;
+            }
 
             // Create flashcards
-            createFlashcardsFromCSV(deck.id, parsedRows);
+            await createFlashcardsFromCSV(deck.id, parsedRows);
 
             // Navigate to deck list
             router.push("/decks");

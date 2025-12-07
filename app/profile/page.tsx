@@ -1,8 +1,10 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { TopAppBar } from "@/components/layout/TopAppBar";
+import { useAuth } from "@/contexts/AuthContext";
 import { SegmentedTabs } from "@/components/profile/SegmentedTabs";
 import { ProgressBar, StatCard } from "@/components/ui";
 import { DeckProgressItem } from "@/components/deck";
@@ -13,7 +15,7 @@ import {
     getWeakestDeck,
     getDeckProgress,
 } from "@/services/progressService";
-import { getAllFlashcards } from "@/services/flashcardService";
+import { getCachedFlashcards } from "@/lib/cache";
 import { DeckProgress } from "@/types";
 
 const tabs = [
@@ -23,6 +25,8 @@ const tabs = [
 ];
 
 export default function ProfilePage() {
+    const router = useRouter();
+    const { signOut } = useAuth();
     const [overallMastery, setOverallMastery] = useState(0);
     const [cardsMastered, setCardsMastered] = useState(0);
     const [currentStreak, setCurrentStreak] = useState(0);
@@ -31,18 +35,24 @@ export default function ProfilePage() {
     const [totalCards, setTotalCards] = useState(0);
     const [activeTab, setActiveTab] = useState("overview");
 
-    useEffect(() => {
-        loadStats();
-    }, []);
+    const handleLogout = async () => {
+        await signOut();
+        router.push("/auth");
+    };
 
-    function loadStats() {
+    const loadStats = useCallback(() => {
+        // All synchronous cache reads - fast!
         setOverallMastery(getOverallMastery());
         setCardsMastered(getTotalCardsMastered());
         setCurrentStreak(getCurrentStreak());
         setWeakestDeck(getWeakestDeck());
         setDeckProgress(getDeckProgress());
-        setTotalCards(getAllFlashcards().length);
-    }
+        setTotalCards(getCachedFlashcards().length);
+    }, []);
+
+    useEffect(() => {
+        loadStats();
+    }, [loadStats]);
 
     return (
         <div className="relative flex min-h-screen w-full flex-col">
@@ -153,6 +163,17 @@ export default function ProfilePage() {
                     </p>
                 </div>
             )}
+
+            {/* Logout Section */}
+            <div className="mt-auto border-t border-muted p-4">
+                <button
+                    onClick={handleLogout}
+                    className="flex w-full items-center justify-center gap-2 rounded-xl bg-destructive/10 px-4 py-3 font-medium text-destructive transition-colors hover:bg-destructive/20"
+                >
+                    <span className="material-symbols-outlined">logout</span>
+                    <span>Sign Out</span>
+                </button>
+            </div>
         </div>
     );
 }

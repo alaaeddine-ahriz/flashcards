@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
@@ -15,8 +15,10 @@ import {
 } from "@/components/ui";
 import { DeckCard } from "@/components/deck";
 import {
-    getDecksWithStats,
-    getAllRegisteredTags,
+    getCachedDecks,
+    getCachedFlashcards,
+} from "@/lib/cache";
+import {
     updateDeck,
     deleteDeck,
     createTag,
@@ -37,16 +39,39 @@ export default function DecksPage() {
     const [showNewLabelSheet, setShowNewLabelSheet] = useState(false);
     const [newLabelName, setNewLabelName] = useState("");
 
-    useEffect(() => {
-        loadData();
+    const loadData = useCallback(() => {
+        // Read from cache - synchronous, fast!
+        const cachedDecks = getCachedDecks();
+        const cachedFlashcards = getCachedFlashcards();
+        const now = new Date().toISOString();
+
+        // Compute stats from cached data
+        const decksWithStats: DeckWithStats[] = cachedDecks.map((deck) => {
+            const deckCards = cachedFlashcards.filter((c) => c.deckId === deck.id);
+            const cardCount = deckCards.length;
+            const masteredCards = deckCards.filter((c) => c.interval >= 7).length;
+            const mastery = cardCount > 0 ? Math.round((masteredCards / cardCount) * 100) : 0;
+            const dueCardCount = deckCards.filter((c) => c.nextReviewDate <= now).length;
+
+            return {
+                ...deck,
+                cardCount,
+                mastery,
+                dueCardCount,
+            };
+        });
+
+        // Collect all tags
+        const tagsSet = new Set<string>();
+        cachedDecks.forEach((d) => d.tags.forEach((t) => tagsSet.add(t)));
+
+        setDecks(decksWithStats);
+        setTags(["All", ...Array.from(tagsSet).sort()]);
     }, []);
 
-    function loadData() {
-        const allDecks = getDecksWithStats();
-        const allTags = getAllRegisteredTags();
-        setDecks(allDecks);
-        setTags(["All", ...allTags]);
-    }
+    useEffect(() => {
+        loadData();
+    }, [loadData]);
 
     function handleDeckMenu(deck: DeckWithStats) {
         setSelectedDeck(deck);
@@ -60,9 +85,9 @@ export default function DecksPage() {
         setShowDeckActions(false);
     }
 
-    function handleDeleteDeck() {
+    async function handleDeleteDeck() {
         if (selectedDeck && confirm("Are you sure you want to delete this deck?")) {
-            deleteDeck(selectedDeck.id);
+            await deleteDeck(selectedDeck.id);
             loadData();
         }
         setShowDeckActions(false);
@@ -74,7 +99,7 @@ export default function DecksPage() {
         setShowLabelSheet(true);
     }
 
-    function handleToggleLabel(label: string) {
+    async function handleToggleLabel(label: string) {
         if (!selectedDeck) return;
 
         const currentTags = selectedDeck.tags || [];
@@ -82,7 +107,7 @@ export default function DecksPage() {
             ? currentTags.filter((t) => t !== label)
             : [...currentTags, label];
 
-        updateDeck(selectedDeck.id, { tags: newTags });
+        await updateDeck(selectedDeck.id, { tags: newTags });
         loadData();
 
         // Update selected deck with new tags

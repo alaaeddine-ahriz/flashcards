@@ -5,12 +5,14 @@ import { useParams, useRouter } from "next/navigation";
 import { DifficultyButtonGroup } from "@/components/practice/DifficultyButton";
 import { SessionProgress } from "@/components/practice/SessionProgress";
 import { Button } from "@/components/ui";
-import { getDeck } from "@/services/deckService";
+import { getCachedDecks } from "@/lib/cache";
 import {
     getAllCardsForPractice,
     recordReview,
+    updateStreak,
+    incrementCardsReviewed,
+    syncPracticeUpdates,
 } from "@/services/practiceService";
-import { updateStreak, incrementCardsReviewed } from "@/services/progressService";
 import { Flashcard as FlashcardType, Difficulty } from "@/types";
 
 export default function PracticePage() {
@@ -25,7 +27,9 @@ export default function PracticePage() {
     const [deckName, setDeckName] = useState("");
 
     useEffect(() => {
-        const deck = getDeck(deckId);
+        // Synchronous cache reads - fast!
+        const decks = getCachedDecks();
+        const deck = decks.find((d) => d.id === deckId);
         if (deck) {
             setDeckName(deck.name);
             const practiceCards = getAllCardsForPractice(deckId);
@@ -47,7 +51,7 @@ export default function PracticePage() {
 
         const currentCard = cards[currentIndex];
 
-        // Record the review
+        // Synchronous cache updates - fast!
         recordReview(currentCard.id, difficulty);
         incrementCardsReviewed();
         updateStreak();
@@ -57,7 +61,8 @@ export default function PracticePage() {
             setCurrentIndex((prev) => prev + 1);
             setIsFlipped(false);
         } else {
-            // Practice complete
+            // Practice complete - sync to Supabase in background
+            syncPracticeUpdates();
             router.push("/decks");
         }
     }, [cards, currentIndex, router]);
