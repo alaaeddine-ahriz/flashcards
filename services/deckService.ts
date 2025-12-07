@@ -1,5 +1,14 @@
 import { createClient } from "@/lib/supabase";
 import {
+    addCachedTag,
+    updateCachedDeck,
+    updateDeckTags,
+    getCachedTags,
+    setCachedTags,
+    getCachedDecks,
+    setCachedDecks,
+} from "@/lib/cache";
+import {
     Deck,
     DeckWithStats,
     CreateDeckInput,
@@ -11,9 +20,14 @@ interface DeckRow {
     id: string;
     user_id: string;
     name: string;
-    tags: string[];
+    tags: string[]; // Legacy field, may be empty
     created_at: string;
     updated_at: string;
+}
+
+interface DeckTagRow {
+    deck_id: string;
+    tag: string;
 }
 
 interface FlashcardStatsRow {
@@ -24,7 +38,7 @@ interface FlashcardStatsRow {
 }
 
 /**
- * Get all decks for the current user
+ * Get all decks for the current user with tags from deck_tags table
  */
 export async function getDecks(): Promise<Deck[]> {
     const supabase = createClient();
@@ -32,18 +46,42 @@ export async function getDecks(): Promise<Deck[]> {
 
     if (!user) return [];
 
-    const { data, error } = await supabase
-        .from("decks")
-        .select("*")
-        .eq("user_id", user.id)
-        .order("created_at", { ascending: false });
+    // Fetch decks and deck_tags in parallel
+    const [decksResult, tagsResult] = await Promise.all([
+        supabase
+            .from("decks")
+            .select("*")
+            .eq("user_id", user.id)
+            .order("created_at", { ascending: false }),
+        supabase
+            .from("deck_tags")
+            .select("deck_id, tag")
+            .eq("user_id", user.id),
+    ]);
 
-    if (error) {
-        console.error("Error fetching decks:", error);
+    if (decksResult.error) {
+        console.error("Error fetching decks:", decksResult.error);
         return [];
     }
 
-    return (data ?? []).map(mapDeckFromDb);
+    const decks = (decksResult.data ?? []) as DeckRow[];
+    const deckTags = (tagsResult.data ?? []) as DeckTagRow[];
+
+    // Build a map of deck_id -> tags[]
+    const deckTagsMap = new Map<string, string[]>();
+    for (const dt of deckTags) {
+        const existing = deckTagsMap.get(dt.deck_id) || [];
+        existing.push(dt.tag);
+        deckTagsMap.set(dt.deck_id, existing);
+    }
+
+    return decks.map((deck) => ({
+        id: deck.id,
+        name: deck.name,
+        tags: deckTagsMap.get(deck.id) || [],
+        createdAt: deck.created_at,
+        updatedAt: deck.updated_at,
+    }));
 }
 
 /**
@@ -55,7 +93,7 @@ export async function getDecksWithStats(): Promise<DeckWithStats[]> {
 
     if (!user) return [];
 
-    const [decksResult, flashcardsResult] = await Promise.all([
+    const [decksResult, flashcardsResult, tagsResult] = await Promise.all([
         supabase
             .from("decks")
             .select("*")
@@ -64,6 +102,10 @@ export async function getDecksWithStats(): Promise<DeckWithStats[]> {
         supabase
             .from("flashcards")
             .select("id, deck_id, interval, next_review_date")
+            .eq("user_id", user.id),
+        supabase
+            .from("deck_tags")
+            .select("deck_id, tag")
             .eq("user_id", user.id),
     ]);
 
@@ -74,7 +116,16 @@ export async function getDecksWithStats(): Promise<DeckWithStats[]> {
 
     const decks = (decksResult.data ?? []) as DeckRow[];
     const flashcards = (flashcardsResult.data ?? []) as FlashcardStatsRow[];
+    const deckTags = (tagsResult.data ?? []) as DeckTagRow[];
     const now = new Date().toISOString();
+
+    // Build a map of deck_id -> tags[]
+    const deckTagsMap = new Map<string, string[]>();
+    for (const dt of deckTags) {
+        const existing = deckTagsMap.get(dt.deck_id) || [];
+        existing.push(dt.tag);
+        deckTagsMap.set(dt.deck_id, existing);
+    }
 
     return decks.map((deck) => {
         const deckCards = flashcards.filter((c) => c.deck_id === deck.id);
@@ -88,7 +139,11 @@ export async function getDecksWithStats(): Promise<DeckWithStats[]> {
         const dueCardCount = deckCards.filter((c) => c.next_review_date <= now).length;
 
         return {
-            ...mapDeckFromDb(deck),
+            id: deck.id,
+            name: deck.name,
+            tags: deckTagsMap.get(deck.id) || [],
+            createdAt: deck.created_at,
+            updatedAt: deck.updated_at,
             cardCount,
             mastery,
             dueCardCount,
@@ -105,16 +160,32 @@ export async function getDeck(id: string): Promise<Deck | null> {
 
     if (!user) return null;
 
-    const { data, error } = await supabase
-        .from("decks")
-        .select("*")
-        .eq("id", id)
-        .eq("user_id", user.id)
-        .single();
+    const [deckResult, tagsResult] = await Promise.all([
+        supabase
+            .from("decks")
+            .select("*")
+            .eq("id", id)
+            .eq("user_id", user.id)
+            .single(),
+        supabase
+            .from("deck_tags")
+            .select("tag")
+            .eq("deck_id", id)
+            .eq("user_id", user.id),
+    ]);
 
-    if (error || !data) return null;
+    if (deckResult.error || !deckResult.data) return null;
 
-    return mapDeckFromDb(data);
+    const deck = deckResult.data as DeckRow;
+    const tags = (tagsResult.data ?? []).map((t: { tag: string }) => t.tag);
+
+    return {
+        id: deck.id,
+        name: deck.name,
+        tags,
+        createdAt: deck.created_at,
+        updatedAt: deck.updated_at,
+    };
 }
 
 /**
@@ -139,7 +210,7 @@ export async function createDeck(input: CreateDeckInput): Promise<Deck | null> {
         .insert({
             user_id: user.id,
             name: input.name,
-            tags: input.tags || [],
+            tags: [], // Legacy field, keep empty
         })
         .select()
         .single();
@@ -149,11 +220,29 @@ export async function createDeck(input: CreateDeckInput): Promise<Deck | null> {
         return null;
     }
 
-    return mapDeckFromDb(data);
+    const deck = data as DeckRow;
+
+    // If tags provided, create deck_tags entries
+    if (input.tags && input.tags.length > 0) {
+        const tagInserts = input.tags.map((tag) => ({
+            user_id: user.id,
+            deck_id: deck.id,
+            tag,
+        }));
+        await supabase.from("deck_tags").insert(tagInserts);
+    }
+
+    return {
+        id: deck.id,
+        name: deck.name,
+        tags: input.tags || [],
+        createdAt: deck.created_at,
+        updatedAt: deck.updated_at,
+    };
 }
 
 /**
- * Update a deck
+ * Update a deck (name only, tags managed separately)
  */
 export async function updateDeck(id: string, input: UpdateDeckInput): Promise<Deck | null> {
     const supabase = createClient();
@@ -177,7 +266,28 @@ export async function updateDeck(id: string, input: UpdateDeckInput): Promise<De
         return null;
     }
 
-    return mapDeckFromDb(data);
+    // Fetch current tags for this deck
+    const { data: tagsData } = await supabase
+        .from("deck_tags")
+        .select("tag")
+        .eq("deck_id", id)
+        .eq("user_id", user.id);
+
+    const tags = (tagsData ?? []).map((t: { tag: string }) => t.tag);
+    const deck = data as DeckRow;
+
+    const updatedDeck = {
+        id: deck.id,
+        name: deck.name,
+        tags,
+        createdAt: deck.created_at,
+        updatedAt: deck.updated_at,
+    };
+
+    // Update local cache
+    updateCachedDeck(id, updatedDeck);
+
+    return updatedDeck;
 }
 
 /**
@@ -203,49 +313,176 @@ export async function deleteDeck(id: string): Promise<boolean> {
     return true;
 }
 
-/**
- * Get all unique tags across decks
- */
-export async function getAllTags(): Promise<string[]> {
-    const decks = await getDecks();
-    const tagsSet = new Set<string>();
+// ============================================
+// Tag Management (User-owned tags)
+// ============================================
 
-    for (const deck of decks) {
-        for (const tag of deck.tags) {
-            tagsSet.add(tag);
-        }
+/**
+ * Get all tags for the current user from their profile
+ */
+export async function getUserTags(): Promise<string[]> {
+    const supabase = createClient();
+    const { data: { user } } = await supabase.auth.getUser();
+
+    if (!user) return getCachedTags();
+
+    const { data, error } = await supabase
+        .from("profiles")
+        .select("tags")
+        .eq("id", user.id)
+        .single();
+
+    if (error || !data) {
+        return getCachedTags();
     }
 
-    return Array.from(tagsSet).sort();
+    const tags = (data.tags || []) as string[];
+    setCachedTags(tags);
+    return tags;
 }
 
 /**
- * Get all registered tags (same as getAllTags for Supabase version)
+ * Create a new tag and save to user's profile
+ * Uses optimistic update: cache is updated immediately for instant UI
  */
-export async function getAllRegisteredTags(): Promise<string[]> {
-    return getAllTags();
+export async function createTag(name: string): Promise<boolean> {
+    // Optimistic update: add to cache immediately for instant UI
+    const currentCachedTags = getCachedTags();
+    if (!currentCachedTags.includes(name)) {
+        const newCachedTags = [...currentCachedTags, name].sort();
+        setCachedTags(newCachedTags);
+    }
+
+    const supabase = createClient();
+    const { data: { user } } = await supabase.auth.getUser();
+
+    if (!user) {
+        // Already added to cache above
+        return true;
+    }
+
+    // Fetch current tags from Supabase and merge
+    const { data: profileData } = await supabase
+        .from("profiles")
+        .select("tags")
+        .eq("id", user.id)
+        .single();
+
+    const supabaseTags = (profileData?.tags || []) as string[];
+    if (supabaseTags.includes(name)) {
+        return true; // Already exists in Supabase
+    }
+
+    const newTags = [...supabaseTags, name].sort();
+
+    const { error } = await supabase
+        .from("profiles")
+        .update({ tags: newTags })
+        .eq("id", user.id);
+
+    if (error) {
+        console.error("Error creating tag:", error);
+        // Cache already has the tag, so UI stays consistent
+        return false;
+    }
+
+    // Sync cache with Supabase state
+    setCachedTags(newTags);
+    return true;
 }
 
 /**
- * Create a new tag (tags are stored on decks, this is a no-op for Supabase)
+ * Assign a tag to a deck for the current user
+ * Returns the updated tags array for optimistic updates
  */
-export function createTag(_name: string): void {
-    // Tags are stored on decks directly, no separate registry needed
+export async function assignTagToDeck(deckId: string, tag: string): Promise<string[] | null> {
+    // Optimistic update: update cache first for instant UI
+    const cachedDecks = getCachedDecks();
+    const deck = cachedDecks.find((d) => d.id === deckId);
+    const currentTags = deck?.tags || [];
+    const newTags = currentTags.includes(tag) ? currentTags : [...currentTags, tag];
+    updateDeckTags(deckId, newTags);
+
+    const supabase = createClient();
+    const { data: { user } } = await supabase.auth.getUser();
+
+    if (!user) return newTags; // Return optimistic result
+
+    const { error } = await supabase
+        .from("deck_tags")
+        .insert({
+            user_id: user.id,
+            deck_id: deckId,
+            tag,
+        });
+
+    if (error) {
+        // Might be a unique constraint violation (already exists)
+        if (error.code === "23505") {
+            return newTags; // Already assigned, that's fine
+        }
+        console.error("Error assigning tag to deck:", error);
+        // Revert optimistic update on error
+        updateDeckTags(deckId, currentTags);
+        return null;
+    }
+
+    return newTags;
 }
 
-// Helper to map database row to Deck type
-function mapDeckFromDb(row: {
-    id: string;
-    name: string;
-    tags: string[];
-    created_at: string;
-    updated_at: string;
-}): Deck {
-    return {
-        id: row.id,
-        name: row.name,
-        tags: row.tags,
-        createdAt: row.created_at,
-        updatedAt: row.updated_at,
-    };
+/**
+ * Remove a tag from a deck for the current user
+ * Returns the updated tags array for optimistic updates
+ */
+export async function removeTagFromDeck(deckId: string, tag: string): Promise<string[] | null> {
+    // Optimistic update: update cache first for instant UI
+    const cachedDecks = getCachedDecks();
+    const deck = cachedDecks.find((d) => d.id === deckId);
+    const currentTags = deck?.tags || [];
+    const newTags = currentTags.filter((t) => t !== tag);
+    updateDeckTags(deckId, newTags);
+
+    const supabase = createClient();
+    const { data: { user } } = await supabase.auth.getUser();
+
+    if (!user) return newTags; // Return optimistic result
+
+    const { error } = await supabase
+        .from("deck_tags")
+        .delete()
+        .eq("user_id", user.id)
+        .eq("deck_id", deckId)
+        .eq("tag", tag);
+
+    if (error) {
+        console.error("Error removing tag from deck:", error);
+        // Revert optimistic update on error
+        updateDeckTags(deckId, currentTags);
+        return null;
+    }
+
+    return newTags;
+}
+
+/**
+ * Get tags assigned to a specific deck by the current user
+ */
+export async function getDeckTags(deckId: string): Promise<string[]> {
+    const supabase = createClient();
+    const { data: { user } } = await supabase.auth.getUser();
+
+    if (!user) return [];
+
+    const { data, error } = await supabase
+        .from("deck_tags")
+        .select("tag")
+        .eq("user_id", user.id)
+        .eq("deck_id", deckId);
+
+    if (error) {
+        console.error("Error fetching deck tags:", error);
+        return [];
+    }
+
+    return (data ?? []).map((t: { tag: string }) => t.tag);
 }

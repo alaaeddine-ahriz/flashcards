@@ -5,9 +5,24 @@
 export interface Deck {
     id: string;
     name: string;
-    tags: string[];
+    tags: string[]; // Now computed from deck_tags join table
     createdAt: string;
     updatedAt: string;
+}
+
+export interface DeckTag {
+    id: string;
+    userId: string;
+    deckId: string;
+    tag: string;
+    createdAt: string;
+}
+
+export interface UserProfile {
+    id: string;
+    email: string | null;
+    tags: string[]; // User's available tags
+    createdAt: string;
 }
 
 export interface Flashcard {
@@ -64,7 +79,6 @@ export interface CreateDeckInput {
 
 export interface UpdateDeckInput {
     name?: string;
-    tags?: string[];
 }
 
 export interface CreateFlashcardInput {

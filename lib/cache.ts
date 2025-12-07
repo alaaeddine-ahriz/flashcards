@@ -10,6 +10,7 @@ const CACHE_KEYS = {
     DECKS: "cache_decks",
     FLASHCARDS: "cache_flashcards",
     PROGRESS: "cache_progress",
+    TAGS: "cache_tags",
     LAST_SYNC: "cache_last_sync",
     PENDING_UPDATES: "cache_pending_updates",
 } as const;
@@ -91,6 +92,10 @@ export function isCacheReady(): boolean {
     return getFromStorage<number>(CACHE_KEYS.LAST_SYNC) !== null;
 }
 
+export function getCachedTags(): string[] {
+    return getFromStorage<string[]>(CACHE_KEYS.TAGS) || [];
+}
+
 // ============================================
 // Cache Write Operations
 // ============================================
@@ -109,6 +114,28 @@ export function setCachedProgress(progress: UserProgress): void {
 
 export function setLastSyncTime(): void {
     setToStorage(CACHE_KEYS.LAST_SYNC, Date.now());
+}
+
+export function setCachedTags(tags: string[]): void {
+    setToStorage(CACHE_KEYS.TAGS, tags);
+}
+
+export function addCachedTag(tag: string): void {
+    const tags = getCachedTags();
+    if (!tags.includes(tag)) {
+        tags.push(tag);
+        tags.sort();
+        setCachedTags(tags);
+    }
+}
+
+export function updateDeckTags(deckId: string, tags: string[]): void {
+    const decks = getCachedDecks();
+    const index = decks.findIndex((d) => d.id === deckId);
+    if (index !== -1) {
+        decks[index] = { ...decks[index], tags };
+        setCachedDecks(decks);
+    }
 }
 
 export function addCachedDeck(deck: Deck): void {

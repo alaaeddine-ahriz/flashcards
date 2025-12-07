@@ -17,11 +17,14 @@ import { DeckCard } from "@/components/deck";
 import {
     getCachedDecks,
     getCachedFlashcards,
+    getCachedTags,
 } from "@/lib/cache";
 import {
-    updateDeck,
     deleteDeck,
     createTag,
+    getUserTags,
+    assignTagToDeck,
+    removeTagFromDeck,
 } from "@/services/deckService";
 import { getOverallStats } from "@/services/progressService";
 import { DeckWithStats } from "@/types";
@@ -58,9 +61,10 @@ export default function DecksPage() {
     const [overallStats, setOverallStats] = useState({ newCount: 0, learningCount: 0, masteredCount: 0, totalCount: 0 });
 
     const loadData = useCallback(() => {
-        // Read from cache - synchronous, fast!
+        // Read from cache - synchronous, instant!
         const cachedDecks = getCachedDecks();
         const cachedFlashcards = getCachedFlashcards();
+        const cachedTags = getCachedTags();
         const now = new Date().toISOString();
 
         // Compute stats from cached data
@@ -79,18 +83,34 @@ export default function DecksPage() {
             };
         });
 
-        // Collect all tags
+        // Build tags from cached data (instant)
         const tagsSet = new Set<string>();
         cachedDecks.forEach((d) => d.tags.forEach((t) => tagsSet.add(t)));
+        cachedTags.forEach((t) => tagsSet.add(t));
 
         setDecks(decksWithStats);
         setTags(["All", ...Array.from(tagsSet).sort()]);
         setOverallStats(getOverallStats());
     }, []);
 
+    // Background refresh of user tags from Supabase (non-blocking)
+    const refreshTagsInBackground = useCallback(async () => {
+        const userTags = await getUserTags();
+        // Merge with existing tags without resetting state
+        setTags((prevTags) => {
+            const tagsSet = new Set(prevTags);
+            userTags.forEach((t) => tagsSet.add(t));
+            // Keep "All" at the front
+            const allTags = Array.from(tagsSet).filter((t) => t !== "All").sort();
+            return ["All", ...allTags];
+        });
+    }, []);
+
     useEffect(() => {
         loadData();
-    }, [loadData]);
+        // Refresh tags from Supabase in background (non-blocking)
+        refreshTagsInBackground();
+    }, [loadData, refreshTagsInBackground]);
 
     function handleDeckMenu(deck: DeckWithStats) {
         setSelectedDeck(deck);
@@ -122,25 +142,49 @@ export default function DecksPage() {
         if (!selectedDeck) return;
 
         const currentTags = selectedDeck.tags || [];
-        const newTags = currentTags.includes(label)
+        const isCurrentlyAssigned = currentTags.includes(label);
+
+        // Optimistic update - update UI immediately
+        const newTags = isCurrentlyAssigned
             ? currentTags.filter((t) => t !== label)
             : [...currentTags, label];
 
-        await updateDeck(selectedDeck.id, { tags: newTags });
-        loadData();
-
-        // Update selected deck with new tags
         setSelectedDeck((prev) => (prev ? { ...prev, tags: newTags } : null));
+
+        // Make the actual API call (cache is already updated optimistically by service)
+        if (isCurrentlyAssigned) {
+            await removeTagFromDeck(selectedDeck.id, label);
+        } else {
+            await assignTagToDeck(selectedDeck.id, label);
+        }
+
+        // Reload from cache to sync decks list
+        loadData();
     }
 
     function handleCreateLabel() {
         if (!newLabelName.trim()) return;
 
-        createTag(newLabelName.trim());
-        loadData();
+        const tagName = newLabelName.trim();
+
+        // Optimistic update: add tag to UI immediately
+        setTags((prevTags) => {
+            if (prevTags.includes(tagName)) return prevTags;
+            const allTags = prevTags.filter((t) => t !== "All");
+            return ["All", ...[...allTags, tagName].sort()];
+        });
+
+        // Clear form and close sheet immediately for snappy UX
         setNewLabelName("");
         setShowNewLabelSheet(false);
-        setShowLabelSheet(true);
+
+        // Only go back to labels sheet if we're managing a deck
+        if (selectedDeck) {
+            setShowLabelSheet(true);
+        }
+
+        // Fire-and-forget: sync to Supabase in background
+        createTag(tagName);
     }
 
     // Filter decks based on search and selected tag
@@ -184,16 +228,25 @@ export default function DecksPage() {
                 </div>
 
                 {/* Category Chips */}
-                <ChipGroup>
-                    {tags.map((tag) => (
-                        <Chip
-                            key={tag}
-                            label={tag}
-                            active={selectedTag === tag}
-                            onClick={() => setSelectedTag(tag)}
-                        />
-                    ))}
-                </ChipGroup>
+                <div className="flex items-center gap-1 pr-4">
+                    <ChipGroup>
+                        {tags.map((tag) => (
+                            <Chip
+                                key={tag}
+                                label={tag}
+                                active={selectedTag === tag}
+                                onClick={() => setSelectedTag(tag)}
+                            />
+                        ))}
+                    </ChipGroup>
+                    <button
+                        onClick={() => setShowNewLabelSheet(true)}
+                        className="shrink-0 text-muted-foreground transition-colors hover:text-foreground"
+                        aria-label="Create new label"
+                    >
+                        <span className="material-symbols-outlined text-xl">add</span>
+                    </button>
+                </div>
             </div>
 
             {/* Deck Cards */}
@@ -314,7 +367,10 @@ export default function DecksPage() {
                 onClose={() => {
                     setShowNewLabelSheet(false);
                     setNewLabelName("");
-                    setShowLabelSheet(true);
+                    // Only go back to labels sheet if we're managing a deck
+                    if (selectedDeck) {
+                        setShowLabelSheet(true);
+                    }
                 }}
                 title="Create Label"
             >

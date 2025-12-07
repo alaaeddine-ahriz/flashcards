@@ -107,3 +107,30 @@ DROP TRIGGER IF EXISTS on_auth_user_created ON auth.users;
 CREATE TRIGGER on_auth_user_created
     AFTER INSERT ON auth.users
     FOR EACH ROW EXECUTE FUNCTION public.handle_new_user();
+
+-- =============================================
+-- Tags System (User-owned tags)
+-- =============================================
+
+-- Add tags array to profiles (user's available tags)
+ALTER TABLE public.profiles ADD COLUMN IF NOT EXISTS tags TEXT[] DEFAULT '{}';
+
+-- Create deck_tags join table for user-specific deck-tag assignments
+CREATE TABLE IF NOT EXISTS public.deck_tags (
+    id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+    user_id UUID REFERENCES public.profiles(id) ON DELETE CASCADE NOT NULL,
+    deck_id UUID REFERENCES public.decks(id) ON DELETE CASCADE NOT NULL,
+    tag TEXT NOT NULL,
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    UNIQUE(user_id, deck_id, tag)
+);
+
+-- Enable RLS for deck_tags
+ALTER TABLE public.deck_tags ENABLE ROW LEVEL SECURITY;
+
+-- Policy for deck_tags
+CREATE POLICY "Users can CRUD own deck_tags" ON public.deck_tags
+    FOR ALL USING (auth.uid() = user_id);
+
+-- Index for performance
+CREATE INDEX IF NOT EXISTS idx_deck_tags_user_deck ON public.deck_tags(user_id, deck_id);

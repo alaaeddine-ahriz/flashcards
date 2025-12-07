@@ -36,9 +36,11 @@ export async function middleware(request: NextRequest) {
 
     // Public routes that don't require authentication
     const publicRoutes = ["/auth"];
-    const isPublicRoute = publicRoutes.some((route) =>
-        request.nextUrl.pathname.startsWith(route)
-    );
+    const isPublicRoute =
+        request.nextUrl.pathname === "/" ||
+        publicRoutes.some((route) =>
+            request.nextUrl.pathname.startsWith(route)
+        );
 
     // Redirect to auth if not logged in and accessing protected route
     if (!user && !isPublicRoute) {
@@ -47,8 +49,8 @@ export async function middleware(request: NextRequest) {
         return NextResponse.redirect(url);
     }
 
-    // Redirect to decks if logged in and accessing auth page
-    if (user && isPublicRoute) {
+    // Redirect to decks if logged in and accessing auth or landing page
+    if (user && (isPublicRoute || request.nextUrl.pathname === "/")) {
         const url = request.nextUrl.clone();
         url.pathname = "/decks";
         return NextResponse.redirect(url);

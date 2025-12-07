@@ -11,6 +11,7 @@ import {
     setCachedDecks,
     setCachedFlashcards,
     setCachedProgress,
+    setCachedTags,
     setLastSyncTime,
     getPendingFlashcardUpdates,
     getPendingProgressUpdate,
@@ -45,6 +46,15 @@ interface ProgressRow {
     total_cards_mastered: number;
     current_streak: number;
     last_practice_date: string | null;
+}
+
+interface DeckTagRow {
+    deck_id: string;
+    tag: string;
+}
+
+interface ProfileRow {
+    tags: string[] | null;
 }
 
 // Map database rows to app types
@@ -98,16 +108,31 @@ export async function syncFromSupabase(): Promise<boolean> {
     }
 
     try {
-        // Fetch all data in parallel
-        const [decksResult, flashcardsResult, progressResult] = await Promise.all([
+        // Fetch all data in parallel (including deck_tags and user profile for tags)
+        const [decksResult, flashcardsResult, progressResult, deckTagsResult, profileResult] = await Promise.all([
             supabase.from("decks").select("*").eq("user_id", user.id),
             supabase.from("flashcards").select("*").eq("user_id", user.id),
             supabase.from("user_progress").select("*").eq("user_id", user.id).single(),
+            supabase.from("deck_tags").select("deck_id, tag").eq("user_id", user.id),
+            supabase.from("profiles").select("tags").eq("id", user.id).single(),
         ]);
 
-        // Cache decks
+        // Build deck_id -> tags[] map from deck_tags
+        const deckTagsMap = new Map<string, string[]>();
+        if (deckTagsResult.data) {
+            for (const dt of deckTagsResult.data as DeckTagRow[]) {
+                const existing = deckTagsMap.get(dt.deck_id) || [];
+                existing.push(dt.tag);
+                deckTagsMap.set(dt.deck_id, existing);
+            }
+        }
+
+        // Cache decks with tags from deck_tags table (not legacy decks.tags)
         if (decksResult.data) {
-            const decks = (decksResult.data as DeckRow[]).map(mapDeck);
+            const decks = (decksResult.data as DeckRow[]).map((row) => ({
+                ...mapDeck(row),
+                tags: deckTagsMap.get(row.id) || [], // Use deck_tags, not legacy row.tags
+            }));
             setCachedDecks(decks);
         }
 
@@ -121,6 +146,12 @@ export async function syncFromSupabase(): Promise<boolean> {
         if (progressResult.data) {
             const progress = mapProgress(progressResult.data as ProgressRow);
             setCachedProgress(progress);
+        }
+
+        // Cache user tags from profile
+        if (profileResult.data) {
+            const profileData = profileResult.data as ProfileRow;
+            setCachedTags(profileData.tags || []);
         }
 
         setLastSyncTime();
